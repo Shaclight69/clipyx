@@ -13,18 +13,45 @@ def donwload_video():
 
     try:
        yt = YouTube(url, on_progress_callback=on_progress)
-       stream = yt.streams.filter(res=resolution).first()
-       os.path.join("downloads", f"{yt.title}.mp4")
-       stream.download(output_path="downloads")
+       title = sanitize_filename(yt.title)
+
+       # Check resolution for video stream selection
+       if resolution == "1080p":
+            video_stream = yt.streams.filter(adaptive=True).filter(mime_type='video/webm').first()
+       else:
+            video_stream = yt.streams.filter(res=resolution, progressive=True).first()
+
+       audio_stream = yt.streams.filter(only_audio=True).first()
+
+       if video_stream is None:
+           raise ValueError(f"No suitable video stream found for resolution {resolution}")
+
+       if audio_stream is None:
+           raise ValueError("No suitable audio stream found.")
+       
+       # Download video and audio streams
+       video_path = video_stream.download(output_path="downloads", filename=f"(video){title}")
+       audio_path = audio_stream.download(output_path='downloads', filename=f"(audio){title}")
+
+       # Use FFmpeg to merge the audio and video streams
+       output_file_path = f"{title}.mp4"
+       os.system(f'ffmpeg -i "{video_path}" -i "{audio_path}" -c:v copy -c:a aac -strict experimental "downloads/{output_file_path}"')
+       
+       # Remove the separate video and audio files
+       os.remove(video_path)
+       os.remove(audio_path)
 
        status_label.configure(text="Successfully downloaded", text_color="white", fg_color="green")
 
     except Exception as e:
        status_label.configure(text=f"Error {str(e)}", text_color="white", fg_color="red")
 
+def sanitize_filename(filename):
+    # Replace characters not allowed in filenames with an underscore
+    return ''.join(c if c.isalnum() or c in [' ', '.', '-', '_'] else '_' for c in filename)
 
 def on_progress(stream, chunk, bytes_remaining):
-   total_size = stream.fileize
+   total_size = stream.filesize
    bytes_downloaded = total_size - bytes_remaining
    percentage_completed = bytes_downloaded / total_size * 100
 
@@ -61,7 +88,7 @@ download_button= ctk.CTkButton(content_frame, text="Download", command=donwload_
 download_button.pack(pady=(10, 5))
 
 #resolutions combo-box
-resolutions=["1080p","720p","360p","240p"]
+resolutions=["1080p","720p","480p","360p","240p"]
 resolution_var = ctk.StringVar()
 resolution_combobox= ttk.Combobox(content_frame, values=resolutions,textvariable=resolution_var)
 resolution_combobox.pack(pady=(10, 5))
@@ -71,9 +98,9 @@ resolution_combobox.set("1080p")
 progress_label = ctk.CTkLabel(content_frame, text="0%")
 
 progress_bar = ctk.CTkProgressBar(content_frame, width=400)
-progress_bar.set(0.6)
+progress_bar.set(0)
 
-status_label = ctk.CTkLabel(content_frame, text="Downloaded")
+status_label = ctk.CTkLabel(content_frame, text="")
 
 
 # to start the app
